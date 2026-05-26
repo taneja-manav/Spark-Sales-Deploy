@@ -26,7 +26,8 @@ def get_spark():
         .getOrCreate()
 
 st.set_page_config(page_title="Fintech Sales Dashboard", layout="wide")
-st.title("📊 MANAV'S Online Retail Analytics Dashboard")
+st.title("📊 MANAV'S
+Online Retail Analytics Dashboard")
 st.markdown("---")
 
 # Sidebar for controls
