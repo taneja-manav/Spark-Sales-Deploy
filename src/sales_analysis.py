@@ -1,0 +1,137 @@
+"""
+Sales Analysis using PySpark
+=============================
+Reads the Online Retail dataset, cleans column headers,
+and calculates Total Revenue (Quantity * UnitPrice) grouped by Country.
+"""
+import os
+from pyspark.sql import SparkSession
+from pyspark import SparkContext
+from pyspark.sql.functions import col,sum as spark_sum,round as spark_round
+import sys
+
+# Update these paths to match YOUR server's actual locations
+
+def create_spark_session():
+    # This forces any 'zombie' gateway to shut down before we start a fresh one
+    return SparkSession.builder \
+        .appName("OnlineRetailSalesAnalysis") \
+        .master("local[1]") \
+        .config("spark.driver.memory", "512m") \
+        .getOrCreate()
+
+
+def clean_column_headers(df):
+    """Remove spaces from all column headers."""
+    for original_name in df.columns:
+        cleaned_name = original_name.replace(" ", "")
+        df = df.withColumnRenamed(original_name, cleaned_name)
+    return df
+
+
+def load_data(spark, data_path):
+    """Load the Online Retail dataset from CSV or Excel."""
+    csv_path = os.path.join(data_path, "OnlineRetail.csv")
+    xlsx_path = os.path.join(data_path, "OnlineRetail.xlsx")
+
+    if os.path.exists(csv_path):
+        print(f"[INFO] Loading CSV from: {csv_path}")
+        df = (
+            spark.read
+            .option("header", "true")
+            .option("inferSchema", "true")
+            .option("encoding", "ISO-8859-1")
+            .csv(csv_path)
+        )
+    elif os.path.exists(xlsx_path):
+        # Convert Excel to CSV first using pandas, then load with Spark
+        print(f"[INFO] Found Excel file. Converting to CSV first...")
+        import pandas as pd
+        pdf = pd.read_excel(xlsx_path, engine="openpyxl")
+        csv_out = os.path.join(data_path, "OnlineRetail.csv")
+        pdf.to_csv(csv_out, index=False, encoding="utf-8")
+        print(f"[INFO] Saved CSV to: {csv_out}")
+        df = (
+            spark.read
+            .option("header", "true")
+            .option("inferSchema", "true")
+            .csv(csv_out)
+        )
+    else:
+        print(f"[ERROR] No data file found in {data_path}")
+        print("Expected: OnlineRetail.csv or OnlineRetail.xlsx")
+        sys.exit(1)
+
+    return df
+
+
+def calculate_revenue_by_country(df):
+    """
+    Calculate Total Revenue (Quantity * UnitPrice) grouped by Country.
+    Filters out rows with null or non-positive Quantity/UnitPrice.
+    """
+    revenue_df = (
+        df
+        .filter(col("Quantity") > 0)
+        .filter(col("UnitPrice") > 0)
+        .withColumn("TotalRevenue", col("Quantity") * col("UnitPrice"))
+        .groupBy("Country")
+        .agg(
+            spark_round(spark_sum("TotalRevenue"), 2).alias("TotalRevenue"),
+            spark_sum("Quantity").alias("TotalQuantity"),
+        )
+        .orderBy(col("TotalRevenue").desc())
+    )
+    return revenue_df
+
+
+def main():
+    """Main entry point for the sales analysis pipeline."""
+    print("=" * 60)
+    print("  PySpark Sales Analysis — Online Retail Dataset")
+    print("=" * 60)
+
+    # Determine data path relative to project r
+    base_dir = "/home/ec2-user/pyspark_project/data"
+    data_path = base_dir
+
+    # --- Step 1: Create Spark Session ---
+    print("\n[STEP 1] Creating Spark session...")
+    spark = create_spark_session()
+    spark.sparkContext.setLogLevel("WARN")
+
+    # --- Step 2: Load Data ---
+    print("\n[STEP 2] Loading dataset...")
+    raw_df = load_data(spark, data_path)
+    print(f"  Raw record count: {raw_df.count()}")
+    print(f"  Original columns: {raw_df.columns}")
+
+    # --- Step 3: Clean Column Headers ---
+    print("\n[STEP 3] Cleaning column headers (removing spaces)...")
+    clean_df = clean_column_headers(raw_df)
+    print(f"  Cleaned columns:  {clean_df.columns}")
+
+    # --- Step 4: Calculate Revenue by Country ---
+    print("\n[STEP 4] Calculating Total Revenue by Country...")
+    revenue_df = calculate_revenue_by_country(clean_df)
+
+    # --- Step 5: Display Results ---
+    print("\n" + "=" * 60)
+    print("  TOP 5 COUNTRIES BY TOTAL REVENUE")
+    print("=" * 60)
+    revenue_df.show(5, truncate=False)
+
+    total_countries = revenue_df.count()
+    print(f"\n  Total countries: {total_countries}")
+
+    # Show full schema
+    print("\nDataFrame Schema:")
+    revenue_df.printSchema()
+
+    # --- Cleanup ---
+    spark.stop()
+    print("\n[DONE] Spark session stopped. Analysis complete.")
+
+
+if __name__ == "__main__":
+    main()
