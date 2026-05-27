@@ -34,7 +34,7 @@ st.markdown("---")
 st.sidebar.header("Analysis Settings")
 data_path = "/home/ec2-user/pyspark_project/data/OnlineRetail.csv"
 
-if st.sidebar.button('🚀 Run Spark Analysis'):
+if st.sidebar.button('🚀 Run Spark to get analysis of sales'):
     with st.spinner('Spark is crunching the data...'):
         spark = get_spark()
         
